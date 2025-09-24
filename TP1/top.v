@@ -1,4 +1,3 @@
-`include "alu.v"
 
 module top #(
     parameter NB_DATA = 8,

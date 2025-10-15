@@ -85,7 +85,6 @@ module uart_rx #(
                     if (s_tick_reg == S_TICK-1) begin
                         state_next   = IDLE;
                         rx_done_tick = 1'b1;
-                        data_next    = data_reg;
                     end else begin
                         s_tick_next = s_tick_reg + 1;
                     end
@@ -93,6 +92,5 @@ module uart_rx #(
             end
         endcase
     end
-
-
+    assign data_out = data_reg;
 endmodule

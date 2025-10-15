@@ -3,12 +3,9 @@ module alu #(
 )
 (
     // Inputs
-    input wire [NB_DATA - 1:0]   i_data,
-    input wire                   i_enable_1,
-    input wire                   i_enable_2,
-    input wire                   i_enable_3,
-    input wire                   i_clk,
-    input wire                   i_reset,
+    input wire [NB_DATA - 1:0]   data_1,
+    input wire [NB_DATA - 1:0]   data_2,
+    input wire [NB_DATA - 3:0]   data_3,
 
     // Outputs
     output reg [NB_DATA - 1:0]  o_data,
@@ -16,28 +13,8 @@ module alu #(
     output reg                  o_zero
 );
 
-    reg [NB_DATA - 1:0] data_1;
-    reg [NB_DATA - 1:0] data_2;
-    reg [NB_DATA - 3:0] data_3;
     reg [NB_DATA - 1:0] alu_result;
     reg [NB_DATA : 0]   alu_op_carry;
-
-    // Data assignments
-    always @(posedge i_clk) begin
-        if (i_reset) begin
-            data_1 <= {NB_DATA{1'b0}};
-            data_2 <= {NB_DATA{1'b0}};
-            data_3 <= {(NB_DATA-2){1'b0}};
-        end else begin
-            if (i_enable_1) begin
-                data_1 <= i_data;
-            end else if (i_enable_2) begin
-                data_2 <= i_data;
-            end else if (i_enable_3) begin
-                data_3 <= i_data[NB_DATA - 1 : 2];
-            end
-        end
-    end
 
     // ALU operations
     always @(*) begin
@@ -77,7 +54,7 @@ module alu #(
                 o_carry = 1'b0;
             end
             6'b000011: begin
-                alu_result = data_1 >>> data_2[NB_DATA - 1: NB_DATA - 2];  // SRA
+                alu_result = $signed(data_1) >>> data_2[NB_DATA - 1: NB_DATA - 2];  // SRA
                 o_carry = 1'b0;
             end
             default: {o_carry, o_zero, alu_result} = {1'b0, 1'b0, 8'b0};

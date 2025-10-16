@@ -20,7 +20,7 @@ module uart_tx #(
         START = 2'b01,
         DATA  = 2'b10,
         STOP  = 2'b11;
-    
+
     always @(posedge clk) begin
         if (reset) begin
             state_reg       <= IDLE;

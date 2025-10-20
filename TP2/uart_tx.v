@@ -1,6 +1,6 @@
 module uart_tx #(
     parameter NB_DATA = 8,
-    parameter S_TICK = 651
+    parameter S_TICK = 16
 ) (
     input wire clk, reset,
     input wire tx,                     // arranque de transmisión

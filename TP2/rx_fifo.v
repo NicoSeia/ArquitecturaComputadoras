@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module fifo #(
+module rx_fifo #(
     parameter B = 8,  // Bits en una palabra
     parameter W = 4   // Bits de direccion
 )(

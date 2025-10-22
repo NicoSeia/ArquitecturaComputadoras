@@ -1,50 +1,57 @@
+`timescale 1ns / 1ps
+
 module top #(
     parameter NB_DATA   = 8,
     parameter CLK_FREQ  = 100000000,
     parameter BAUD      = 9600,
     parameter START_FSM = 8'hFF
 ) (
-    input wire clk,
-    input wire reset,
-    input wire rx_serial,
+    input  wire clk,
+    input  wire reset,
+    input  wire rx_serial,
     output wire tx_serial
 );
 
-    // Baud rate generator tick
+    // -------------------------------
+    // Señales internas
+    // -------------------------------
+
+    // Baud rate generator
     wire s_tick;
 
-    // UART RX -> FIFO connections
+    // UART RX
     wire rx_done_tick;
     wire [NB_DATA-1:0] rx_data_out;
 
-    // FIFO -> Interface connections
+    // FIFO -> Interface
     wire [NB_DATA-1:0] fifo_data_out;
     wire fifo_empty;
     wire fifo_rd;
+    wire fifo_full;
 
-    // Interface -> UART TX connections
+    // Interface -> UART TX
     wire tx_wr;
     wire [NB_DATA-1:0] tx_data_in;
-    wire tx_full; // Assumed to be always not full for this simple case
+    wire tx_full;
 
-    // Interface -> ALU connections
+    // Interface -> ALU
     wire alu_start;
     wire [NB_DATA-3:0] alu_op;
     wire [NB_DATA-1:0] alu_a;
     wire [NB_DATA-1:0] alu_b;
 
-    // ALU -> Interface connections
+    // ALU -> Interface
     wire [NB_DATA-1:0] alu_result;
     wire alu_valid;
-    wire alu_carry; // Not used by interface, but ALU provides it
-    wire alu_zero;  // Not used by interface, but ALU provides it
+    wire alu_carry;
+    wire alu_zero;
 
-    // For simplicity, we assume the TX buffer is never full.
-    // In a real system, you might get this from the uart_tx module.
-    assign tx_full = 1'b0;
+    // -------------------------------
+    // Señales derivadas
+    // -------------------------------
+    assign tx_full = 1'b0;  // TX nunca lleno (simplificación)
 
-    // The ALU result is valid one cycle after alu_start is asserted.
-    // We create a registered version of alu_start to signal validity.
+    // Validación del resultado de la ALU
     reg alu_start_d1;
     always @(posedge clk) begin
         if (reset)
@@ -54,7 +61,11 @@ module top #(
     end
     assign alu_valid = alu_start_d1;
 
-    // Instantiate Baud Rate Generator
+    // -------------------------------
+    // Instancias
+    // -------------------------------
+
+    // Baud rate generator
     baud_rate_gen #(
         .CLK_FREQ(CLK_FREQ),
         .BAUD(BAUD)
@@ -64,7 +75,7 @@ module top #(
         .tick(s_tick)
     );
 
-    // Instantiate UART Receiver
+    // UART Receiver
     uart_rx #(
         .NB_DATA(NB_DATA)
     ) uart_rx_inst (
@@ -76,20 +87,22 @@ module top #(
         .data_out(rx_data_out)
     );
 
-    // Instantiate RX FIFO (single-element buffer)
+    // RX FIFO (multi-word buffer)
     rx_fifo #(
-        .NB_DATA(NB_DATA)
+        .B(NB_DATA),
+        .W(4)
     ) rx_fifo_inst (
         .clk(clk),
         .reset(reset),
-        .wr(rx_done_tick),
-        .data_in(rx_data_out),
+        .wr(rx_done_tick && !fifo_full),  // protege contra overflow
         .rd(fifo_rd),
-        .data_out(fifo_data_out),
+        .w_data(rx_data_out),
+        .r_data(fifo_data_out),
+        .full(fifo_full),
         .empty(fifo_empty)
     );
 
-    // Instantiate Interface FSM
+    // Interface FSM
     interface #(
         .NB_DATA(NB_DATA),
         .START_FSM(START_FSM)
@@ -110,7 +123,7 @@ module top #(
         .alu_b(alu_b)
     );
 
-    // Instantiate ALU
+    // ALU
     alu #(
         .NB_DATA(NB_DATA)
     ) alu_inst (
@@ -122,16 +135,16 @@ module top #(
         .o_zero(alu_zero)
     );
 
-    // Instantiate UART Transmitter
+    // UART Transmitter
     uart_tx #(
         .NB_DATA(NB_DATA)
     ) uart_tx_inst (
         .clk(clk),
         .reset(reset),
-        .tx(tx_wr),
+        .tx(tx_serial),
         .s_tick(s_tick),
         .data_in(tx_data_in),
-        .tx_done_tick(), // Not used
+        .tx_done_tick(), // no usado
         .tx_serial(tx_serial)
     );
 

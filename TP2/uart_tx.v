@@ -11,7 +11,7 @@ module uart_tx #(
 );
     reg [1:0]           state_reg, state_next;
     reg [2:0]           n_data_bits_reg, n_data_bits_next;
-    reg [9:0]           s_tick_reg, s_tick_next;                                // Contador de s_ticks
+    reg [3:0]           s_tick_reg, s_tick_next;                                // Contador de s_ticks
     reg [NB_DATA-1:0]   data_reg, data_next;                                    // Registro para almacenar el dato a enviar
     reg tx_reg, tx_next;                                                        // Registro de la salida serial (para evitar glitches)
 
@@ -61,7 +61,7 @@ module uart_tx #(
             START: begin
                 tx_next = 1'b0;                                                 // Envía el bit de START (un '0')
                 if (s_tick) begin
-                    if (s_tick_reg == (S_TICK-1)) begin                         // Espera un período de bit completo (S_TICK ticks)
+                    if (s_tick_reg == 15) begin                         // Espera un período de bit completo (S_TICK ticks)
                         s_tick_next      = 0;
                         n_data_bits_next = 0;                                   // Prepara el contador para el primer bit de dato
                         state_next       = DATA;                                // Pasa al estado de envío de datos
@@ -74,7 +74,7 @@ module uart_tx #(
             DATA: begin
                 tx_next = data_reg[0];                                          // Pone en la salida el bit menos significativo (LSB)
                 if (s_tick) begin
-                    if (s_tick_reg == S_TICK-1) begin                           // Espera un período de bit completo
+                    if (s_tick_reg == 15) begin                           // Espera un período de bit completo
                         s_tick_next = 0;
                         data_next = data_reg >> 1;                              // Desplaza el dato a la derecha para preparar el siguiente bit
                         if (n_data_bits_reg == NB_DATA-1) begin                 // Si ya se enviaron todos los bits
@@ -91,7 +91,7 @@ module uart_tx #(
             STOP: begin
                 tx_next = 1'b1;                                                 // Envía el bit de STOP (un '1')
                 if (s_tick) begin
-                    if (s_tick_reg == S_TICK-1) begin                           // Espera un período de bit completo
+                    if (s_tick_reg == (S_TICK-1)) begin                           // Espera un período de bit completo
                         state_next   = IDLE;                                    // Vuelve al estado IDLE
                         tx_done_tick = 1'b1;                                    // Genera el pulso de 'done'
                     end else begin

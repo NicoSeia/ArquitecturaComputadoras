@@ -52,7 +52,7 @@ module uart_rx #(
 
             START: begin
                 if (s_tick) begin
-                    if (s_tick_reg == (S_TICK-2)/2) begin                       // El tick 7 es el tick que determina el medio del cero.
+                    if (s_tick_reg == 7) begin                       // El tick 7 es el tick que determina el medio del cero.
                         s_tick_next      = 0;                                   // Reseteamos a cero para ir viendo los medios.
                         n_data_bits_next = 0;                                   // Comineza el primer dato.
                         state_next       = DATA;                                // Cambio de estado.
@@ -63,7 +63,7 @@ module uart_rx #(
 
             DATA: begin
                 if (s_tick) begin
-                    if (s_tick_reg == S_TICK-1) begin
+                    if (s_tick_reg == 15) begin
                         s_tick_next = 0;                                        // Si llegamos a los 15 s_ticks, significa que llegamos al medio del bit.
                         data_next   = {rx, data_reg[NB_DATA-1:1]};              // Se pone el bit rx a la izq y se van desplazando todos a la derecha.
                         if (n_data_bits_reg == NB_DATA-1) begin                 // Si terminaron de cargarse los bits, pasa a STOP.

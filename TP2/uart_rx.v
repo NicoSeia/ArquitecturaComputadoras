@@ -11,8 +11,8 @@ module uart_rx #(
 
     reg [1:0]           state_reg, state_next;
     reg [2:0]           n_data_bits_reg, n_data_bits_next;
-    reg [9:0]           s_tick_reg, s_tick_next;            // tick counter
-    reg [NB_DATA-1:0]   data_reg, data_next;                // data register
+    reg [9:0]           s_tick_reg, s_tick_next;                                // Contador de registros.
+    reg [NB_DATA-1:0]   data_reg, data_next;                                    // Registro del dato
 
     localparam [1:0]
         IDLE  = 2'b00,
@@ -27,16 +27,16 @@ module uart_rx #(
             s_tick_reg      <= 0;
             data_reg        <= 0;
         end else begin
-            state_reg       <= state_next;
-            n_data_bits_reg <= n_data_bits_next;
-            s_tick_reg      <= s_tick_next;
-            data_reg        <= data_next;
+            state_reg       <= state_next;                                      // Se carga el siguiente
+            n_data_bits_reg <= n_data_bits_next;                                // Se carga el indice de datos que vamos.
+            s_tick_reg      <= s_tick_next;                                     // Se carga el tick actual.
+            data_reg        <= data_next;                                       // Se carga el dato actual.
         end
     end
 
     // next state logic
     always @(*) begin
-        state_next       = state_reg;
+        state_next       = state_reg;                                           
         rx_done_tick     = 1'b0;
         data_next        = data_reg;
         n_data_bits_next = n_data_bits_reg;
@@ -44,7 +44,7 @@ module uart_rx #(
 
         case (state_reg)
             IDLE: begin
-                if (~rx) begin                     // start bit detected
+                if (~rx) begin                                                  // Start bit detectado. De 1 a 0.
                     state_next  = START;
                     s_tick_next = 0;
                 end
@@ -52,30 +52,30 @@ module uart_rx #(
 
             START: begin
                 if (s_tick) begin
-                    if (s_tick_reg == (S_TICK-1)/2) begin
-                        s_tick_next      = 0;
-                        n_data_bits_next = 0;
-                        state_next       = DATA;
+                    if (s_tick_reg == (S_TICK-1)/2) begin                       // El tick 7 es el tick que determina el medio del cero.
+                        s_tick_next      = 0;                                   // Reseteamos a cero para ir viendo los medios.
+                        n_data_bits_next = 0;                                   // Comineza el primer dato.
+                        state_next       = DATA;                                // Cambio de estado.
                     end else begin
-                        state_next  = IDLE;   // false start, back to idle
+                        state_next  = IDLE;                                     // Falso arranque. Volvemos a IDLE
                     end
                 end else begin
-                    s_tick_next = s_tick_reg + 1;
+                    s_tick_next = s_tick_reg + 1;                               // Vamos registrando internamente el tick
                 end
             end
 
             DATA: begin
                 if (s_tick) begin
                     if (s_tick_reg == S_TICK-1) begin
-                        s_tick_next = 0;
-                        data_next   = {rx, data_reg[NB_DATA-1:1]}; // LSB first
-                        if (n_data_bits_reg == NB_DATA-1) begin
-                            state_next = STOP;
+                        s_tick_next = 0;                                        // Si llegamos a los 15 s_ticks, significa que llegamos al medio del bit.
+                        data_next   = {rx, data_reg[NB_DATA-1:1]};              // Se pone el bit rx a la izq y se van desplazando todos a la derecha.
+                        if (n_data_bits_reg == NB_DATA-1) begin                 // Si terminaron de cargarse los bits, pasa a STOP.
+                            state_next = STOP;                                  // Si tenemos los 8 bits. Entramos al estado de STOP.
                         end else begin
-                            n_data_bits_next = n_data_bits_reg + 1;
+                            n_data_bits_next = n_data_bits_reg + 1;             // Contamos cuantos bits se van cargando
                         end
                     end else begin
-                        s_tick_next = s_tick_reg + 1;
+                        s_tick_next = s_tick_reg + 1;               
                     end
                 end
             end
@@ -92,5 +92,5 @@ module uart_rx #(
             end
         endcase
     end
-    assign data_out = data_reg;
+    assign data_out = data_reg;                                                 // Cargamos el dato a la salida.
 endmodule

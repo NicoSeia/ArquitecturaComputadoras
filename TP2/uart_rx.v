@@ -6,12 +6,12 @@ module uart_rx #(
     input wire reset,
     input wire rx, s_tick,
     output reg rx_done_tick,
-    output reg [NB_DATA-1:0] data_out
+    output wire [NB_DATA-1:0] data_out
 );
 
     reg [1:0]           state_reg, state_next;
     reg [2:0]           n_data_bits_reg, n_data_bits_next;
-    reg [9:0]           s_tick_reg, s_tick_next;                                // Contador de registros.
+    reg [3:0]           s_tick_reg, s_tick_next;                                // Contador de registros.
     reg [NB_DATA-1:0]   data_reg, data_next;                                    // Registro del dato
 
     localparam [1:0]
@@ -52,13 +52,10 @@ module uart_rx #(
 
             START: begin
                 if (s_tick) begin
-                    if (s_tick_reg == (S_TICK-1)/2) begin                       // El tick 7 es el tick que determina el medio del cero.
+                    if (s_tick_reg == (S_TICK-2)/2) begin                       // El tick 7 es el tick que determina el medio del cero.
                         s_tick_next      = 0;                                   // Reseteamos a cero para ir viendo los medios.
                         n_data_bits_next = 0;                                   // Comineza el primer dato.
                         state_next       = DATA;                                // Cambio de estado.
-                    end else begin
-                        state_next  = IDLE;                                     // Falso arranque. Volvemos a IDLE
-                    end
                 end else begin
                     s_tick_next = s_tick_reg + 1;                               // Vamos registrando internamente el tick
                 end

@@ -1,35 +1,87 @@
-module rx_fifo #(
-    parameter NB_DATA = 8
-) (
-    input wire clk,
-    input wire reset,
+`timescale 1ns / 1ps
 
-    // UART RX side
-    input wire wr,
-    input wire [NB_DATA-1:0] data_in,
-
-    // Interface side
-    input wire rd,
-    output wire [NB_DATA-1:0] data_out,
-    output wire empty
+module fifo #(
+    parameter B = 8,  // Bits en una palabra
+    parameter W = 4   // Bits de direccion
+)(
+    input  wire         clk, reset,
+    input  wire         rd, wr,
+    input  wire [B-1:0] w_data,
+    output wire         empty, full,
+    output wire [B-1:0] r_data
 );
 
-    reg [NB_DATA-1:0]   buffer_reg;
-    reg                 full_reg;
+    // Declaracion de senales
+    reg [B-1:0] array_reg [2**W-1:0];      // Memoria de registros para almacenar datos
+    reg [W-1:0] w_ptr_reg, w_ptr_next;     // Puntero de escritura (actual y proximo)
+    reg [W-1:0] r_ptr_reg, r_ptr_next;     // Puntero de lectura (actual y proximo)
+    reg         full_reg, full_next;       // Bandera de FIFO lleno
+    reg         empty_reg, empty_next;     // Bandera de FIFO vacio
 
-    assign data_out = buffer_reg;
-    assign empty = ~full_reg;
 
-    always @(posedge clk) begin
-        if (reset) begin
-            full_reg <= 1'b0;
-            buffer_reg <= '0;
-        end else if (wr) begin
-            full_reg <= 1'b1;
-            buffer_reg <= data_in;
-        end else if (rd && full_reg) begin
-            full_reg <= 1'b0;
+    // --- Cuerpo del modulo ---
+
+    // Operacion de escritura en la memoria
+    always @(posedge clk)
+        if (wr && !full_reg)                 // Solo se escribe si 'wr' esta activo y no esta lleno
+            array_reg[w_ptr_reg] <= w_data;
+
+    // Operacion de lectura de la memoria
+    assign r_data = array_reg[r_ptr_reg];    // La salida siempre expone el dato apuntado por r_ptr_reg
+
+
+    // Registros para los punteros y las banderas de estado
+    always @(posedge clk, posedge reset)
+        if (reset)
+        begin
+            w_ptr_reg <= 0;
+            r_ptr_reg <= 0;
+            full_reg  <= 1'b0;               // Al inicio no esta lleno
+            empty_reg <= 1'b1;               // Al inicio esta vacio
+        end
+        else
+        begin
+            w_ptr_reg <= w_ptr_next;         // Se actualiza el puntero de escritura
+            r_ptr_reg <= r_ptr_next;         // Se actualiza el puntero de lectura
+            full_reg  <= full_next;          // Se actualiza la bandera 'full'
+            empty_reg <= empty_next;         // Se actualiza la bandera 'empty'
+        end
+
+
+    // Logica combinacional para calcular el proximo estado de los punteros y banderas
+    always @*
+    begin
+        // Por defecto, los valores se mantienen
+        w_ptr_next = w_ptr_reg;
+        r_ptr_next = r_ptr_reg;
+        full_next  = full_reg;
+        empty_next = empty_reg;
+
+        // Se evaluan las operaciones de lectura/escritura
+        if (wr && !full_reg && rd && !empty_reg) // Caso 1: Escritura y Lectura simultanea
+        begin
+           w_ptr_next = w_ptr_reg + 1;
+           r_ptr_next = r_ptr_reg + 1;
+        end
+        else if (wr && !full_reg)              // Caso 2: Solo Escritura
+        begin
+            w_ptr_next = w_ptr_reg + 1;
+            empty_next = 1'b0;                 // Si se escribe, ya no puede estar vacio
+            if ((w_ptr_reg + 1) == r_ptr_reg)
+                full_next = 1'b1;              // Si el proximo puntero de escritura alcanza al de lectura, se llenara
+        end
+        else if (rd && !empty_reg)             // Caso 3: Solo Lectura
+        begin
+            r_ptr_next = r_ptr_reg + 1;
+            full_next = 1'b0;                  // Si se lee, ya no puede estar lleno
+            if ((r_ptr_reg + 1) == w_ptr_reg)
+                empty_next = 1'b1;             // Si el proximo puntero de lectura alcanza al de escritura, se vaciara
         end
     end
 
+    // Asignacion final a las salidas del modulo
+    assign full = full_reg;
+    assign empty = empty_reg;
+
 endmodule
+

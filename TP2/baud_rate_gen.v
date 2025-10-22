@@ -8,7 +8,7 @@ module baud_rate_gen #(
 );
 
     localparam integer N = CLK_FREQ / (BAUD * 16);
-    reg [15:0] count;
+    reg [$clog2(DIVISOR)-1:0] count_reg;                            // Modular.
 
     always @(posedge clk) begin
         if (reset) begin

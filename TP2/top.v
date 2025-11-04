@@ -141,7 +141,7 @@ module top #(
     ) uart_tx_inst (
         .clk(clk),
         .reset(reset),
-        .tx(tx_serial),
+        .tx(tx_wr),
         .s_tick(s_tick),
         .data_in(tx_data_in),
         .tx_done_tick(), // no usado

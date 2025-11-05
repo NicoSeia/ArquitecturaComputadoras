@@ -2,82 +2,48 @@
 
 module top #(
     parameter NB_DATA   = 8,
-    parameter CLK_FREQ  = 100000000,
-    parameter BAUD      = 9600,
-    parameter START_FSM = 8'hFF
-) (
+    parameter CLK_FREQ  = 100_000_000,
+    parameter BAUD_RATE = 9600,
+    parameter FIFO_W    = 8
+)(
     input  wire clk,
     input  wire reset,
     input  wire rx_serial,
     output wire tx_serial
 );
 
-    // -------------------------------
     // Señales internas
-    // -------------------------------
-
-    // Baud rate generator
     wire s_tick;
-
-    // UART RX
-    wire rx_done_tick;
-    wire [NB_DATA-1:0] rx_data_out;
-
-    // FIFO -> Interface
-    wire [NB_DATA-1:0] fifo_data_out;
-    wire fifo_empty;
-    wire fifo_rd;
-    wire fifo_full;
-
-    // Interface -> UART TX
-    wire tx_wr;
-    wire [NB_DATA-1:0] tx_data_in;
-    wire tx_full;
-
-    // Interface -> ALU
-    wire alu_start;
-    wire [NB_DATA-3:0] alu_op;
-    wire [NB_DATA-1:0] alu_a;
-    wire [NB_DATA-1:0] alu_b;
-
-    // ALU -> Interface
-    wire [NB_DATA-1:0] alu_result;
-    wire alu_valid;
-    wire alu_carry;
-    wire alu_zero;
-
-    // -------------------------------
-    // Señales derivadas
-    // -------------------------------
-    assign tx_full = 1'b0;  // TX nunca lleno (simplificación)
-
-    // Validación del resultado de la ALU
-    reg alu_start_d1;
-    always @(posedge clk) begin
-        if (reset)
-            alu_start_d1 <= 1'b0;
-        else
-            alu_start_d1 <= alu_start;
-    end
-    assign alu_valid = alu_start_d1;
-
-    // -------------------------------
-    // Instancias
-    // -------------------------------
-
-    // Baud rate generator
+    
+    // Señales UART RX
+    wire                rx_done_tick;
+    wire [NB_DATA-1:0]  rx_data_out;
+    
+    // Señales FIFO
+    wire                fifo_empty;
+    wire                fifo_full;
+    wire [NB_DATA-1:0]  fifo_r_data;
+    wire                fifo_rd;
+    
+    // Señales UART TX
+    wire                tx_start;
+    wire [NB_DATA-1:0]  tx_data_in;
+    wire                tx_done_tick;
+    
+    // Instancia del generador de baud rate
     baud_rate_gen #(
         .CLK_FREQ(CLK_FREQ),
-        .BAUD(BAUD)
+        .BAUD(BAUD_RATE)
     ) baud_gen_inst (
         .clk(clk),
         .reset(reset),
         .tick(s_tick)
     );
-
-    // UART Receiver
+    
+    // Instancia del receptor UART
     uart_rx #(
-        .NB_DATA(NB_DATA)
+        .NB_DATA(NB_DATA),
+        .S_TICK(16)
     ) uart_rx_inst (
         .clk(clk),
         .reset(reset),
@@ -86,65 +52,47 @@ module top #(
         .rx_done_tick(rx_done_tick),
         .data_out(rx_data_out)
     );
-
-    // RX FIFO (multi-word buffer)
+    
+    // Instancia del FIFO para recepción
     rx_fifo #(
         .B(NB_DATA),
-        .W(4)
+        .W(FIFO_W)
     ) rx_fifo_inst (
         .clk(clk),
         .reset(reset),
-        .wr(rx_done_tick && !fifo_full),  // protege contra overflow
         .rd(fifo_rd),
+        .wr(rx_done_tick),
         .w_data(rx_data_out),
-        .r_data(fifo_data_out),
+        .empty(fifo_empty),
         .full(fifo_full),
-        .empty(fifo_empty)
+        .r_data(fifo_r_data)
     );
-
-    // Interface FSM
+    
+    // Instancia de la interface (controlador)
     interface #(
-        .NB_DATA(NB_DATA),
-        .START_FSM(START_FSM)
+        .NB_DATA(NB_DATA)
     ) interface_inst (
         .clk(clk),
         .reset(reset),
-        .data_rx(fifo_data_out),
-        .empty_rx(fifo_empty),
-        .rd(fifo_rd),
-        .tx_full(tx_full),
-        .wr_tx(tx_wr),
-        .data_tx(tx_data_in),
-        .alu_result(alu_result),
-        .alu_valid(alu_valid),
-        .alu_start(alu_start),
-        .alu_op(alu_op),
-        .alu_a(alu_a),
-        .alu_b(alu_b)
+        .rx_empty(fifo_empty),
+        .rx_data(fifo_r_data),
+        .rx_rd(fifo_rd),
+        .tx_done_tick(tx_done_tick),
+        .tx_start(tx_start),
+        .tx_data(tx_data_in)
     );
-
-    // ALU
-    alu #(
-        .NB_DATA(NB_DATA)
-    ) alu_inst (
-        .data_1(alu_a),
-        .data_2(alu_b),
-        .data_3(alu_op),
-        .o_data(alu_result),
-        .o_carry(alu_carry),
-        .o_zero(alu_zero)
-    );
-
-    // UART Transmitter
+    
+    // Instancia del transmisor UART
     uart_tx #(
-        .NB_DATA(NB_DATA)
+        .NB_DATA(NB_DATA),
+        .S_TICK(16)
     ) uart_tx_inst (
         .clk(clk),
         .reset(reset),
-        .tx(tx_wr),
+        .tx(tx_start),
         .s_tick(s_tick),
         .data_in(tx_data_in),
-        .tx_done_tick(), // no usado
+        .tx_done_tick(tx_done_tick),
         .tx_serial(tx_serial)
     );
 

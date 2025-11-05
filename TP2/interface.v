@@ -1,104 +1,137 @@
+`timescale 1ns / 1ps
+
 module interface #(
-    parameter NB_DATA = 8,
-    parameter START_FSM = 8'hFF
+    parameter NB_DATA = 8
 )(
-    input  wire clk,
-    input  wire reset,
-
-    // UART RX
-    input  wire [NB_DATA-1:0] data_rx,
-    input  wire empty_rx,
-    output reg  rd,
-
-    // UART TX
-    input  wire tx_full,
-    output reg  wr_tx,
-    output reg  [NB_DATA-1:0] data_tx,
-
-    // ALU
-    input  wire [NB_DATA-1:0] alu_result,
-    input  wire alu_valid,
-    output reg  alu_start,
-    output reg  [NB_DATA-3:0] alu_op,
-    output reg  [NB_DATA-1:0] alu_a,
-    output reg  [NB_DATA-1:0] alu_b
+    input  wire                  clk,
+    input  wire                  reset,
+    
+    // Conexión con UART RX (desde FIFO)
+    input  wire                  rx_empty,
+    input  wire [NB_DATA-1:0]    rx_data,
+    output reg                   rx_rd,
+    
+    // Conexión con UART TX (hacia TX)
+    input  wire                  tx_done_tick,
+    output reg                   tx_start,
+    output reg  [NB_DATA-1:0]    tx_data
 );
 
-    // FSM States
-    localparam [5:0] 
-        WAIT    = 6'b000001,
-        GET_A   = 6'b000010,
-        GET_B   = 6'b000100,
-        GET_OP  = 6'b001000,
-        START   = 6'b010000,
-        SEND    = 6'b100000;
-
-    reg [5:0] state, next_state;
-
-    // Data registers
-    reg [NB_DATA-1:0] reg_a, reg_b;
-    reg [NB_DATA-3:0] reg_op;
-    reg [NB_DATA-1:0] reg_result;
-
-    // FSM Sequential Logic
+    // Estados de la máquina
+    localparam [2:0]
+        IDLE      = 3'b000,
+        READ_OP   = 3'b001,
+        READ_A    = 3'b010,
+        READ_B    = 3'b011,
+        COMPUTE   = 3'b100,
+        SEND      = 3'b101,
+        WAIT_TX   = 3'b110;
+    
+    // Registros de estado
+    reg [2:0] state_reg, state_next;
+    
+    // Registros para almacenar los operandos y operación
+    reg [NB_DATA-3:0] op_reg, op_next;
+    reg [NB_DATA-1:0] operand_a_reg, operand_a_next;
+    reg [NB_DATA-1:0] operand_b_reg, operand_b_next;
+    reg [NB_DATA-1:0] result_reg, result_next;
+    
+    // Señales de la ALU
+    wire [NB_DATA-1:0] alu_result;
+    wire               alu_carry;
+    wire               alu_zero;
+    
+    // Instancia de la ALU
+    alu #(
+        .NB_DATA(NB_DATA)
+    ) alu_inst (
+        .data_1(operand_a_reg),
+        .data_2(operand_b_reg),
+        .data_3(op_reg),
+        .o_data(alu_result),
+        .o_carry(alu_carry),
+        .o_zero(alu_zero)
+    );
+    
+    // Registro de estado
     always @(posedge clk) begin
         if (reset) begin
-            state      <= WAIT;
-            reg_a      <= {NB_DATA{1'b0}};
-            reg_b      <= {NB_DATA{1'b0}};
-            reg_op     <= {(NB_DATA-2){1'b0}};
-            reg_result <= {NB_DATA{1'b0}};
+            state_reg     <= IDLE;
+            op_reg        <= 0;
+            operand_a_reg <= 0;
+            operand_b_reg <= 0;
+            result_reg    <= 0;
         end else begin
-            state <= next_state;
-
-            // Register data when reading from UART
-            if (state == GET_A && rd && !empty_rx)
-                reg_a <= data_rx;
-            if (state == GET_B && rd && !empty_rx)
-                reg_b <= data_rx;
-            if (state == GET_OP && rd && !empty_rx)
-                reg_op <= data_rx[NB_DATA-3:0];
-
-            // Register ALU result
-            if (alu_valid)
-                reg_result <= alu_result;
+            state_reg     <= state_next;
+            op_reg        <= op_next;
+            operand_a_reg <= operand_a_next;
+            operand_b_reg <= operand_b_next;
+            result_reg    <= result_next;
         end
     end
-
-    // FSM Combinational Logic (Next State)
+    
+    // Lógica combinacional
     always @(*) begin
-        next_state = state;
-        case (state)
-            WAIT:   if (data_rx == START_FSM && !empty_rx) next_state = GET_A;
-            GET_A:  if (!empty_rx)                         next_state = GET_B;
-            GET_B:  if (!empty_rx)                         next_state = GET_OP;
-            GET_OP: if (!empty_rx)                         next_state = START;
-            START:  if (alu_valid)                         next_state = SEND;
-            SEND:   if (!tx_full)                          next_state = WAIT;
-            default:                                       next_state = WAIT;
-        endcase
-    end
-
-    // FSM Combinational Logic (Outputs)
-    always @(*) begin
-        // Default values
-        rd          = 1'b0;
-        wr_tx       = 1'b0;
-        data_tx     = {NB_DATA{1'b0}};
-        alu_start   = 1'b0;
-        alu_op      = reg_op;
-        alu_a       = reg_a;
-        alu_b       = reg_b;
-
-        case (state)
-            WAIT:   rd = !empty_rx;
-            GET_A:  rd = !empty_rx;
-            GET_B:  rd = !empty_rx;
-            GET_OP: rd = !empty_rx;
-            START:  alu_start = 1'b1;
+        // Valores por defecto
+        state_next     = state_reg;
+        op_next        = op_reg;
+        operand_a_next = operand_a_reg;
+        operand_b_next = operand_b_reg;
+        result_next    = result_reg;
+        rx_rd          = 1'b0;
+        tx_start       = 1'b0;
+        tx_data        = result_reg;
+        
+        case (state_reg)
+            IDLE: begin
+                if (!rx_empty) begin
+                    state_next = READ_OP;
+                end
+            end
+            
+            READ_OP: begin
+                if (!rx_empty) begin
+                    op_next    = rx_data[NB_DATA-3:0];
+                    rx_rd      = 1'b1;
+                    state_next = READ_A;
+                end
+            end
+            
+            READ_A: begin
+                if (!rx_empty) begin
+                    operand_a_next = rx_data;
+                    rx_rd          = 1'b1;
+                    state_next     = READ_B;
+                end
+            end
+            
+            READ_B: begin
+                if (!rx_empty) begin
+                    operand_b_next = rx_data;
+                    rx_rd          = 1'b1;
+                    state_next     = COMPUTE;
+                end
+            end
+            
+            COMPUTE: begin
+                result_next = alu_result;
+                state_next  = SEND;
+            end
+            
             SEND: begin
-                wr_tx   = !tx_full;
-                data_tx = reg_result;
+                tx_data    = result_reg;
+                tx_start   = 1'b1;
+                state_next = WAIT_TX;
+            end
+            
+            WAIT_TX: begin
+                if (tx_done_tick) begin
+                    state_next = IDLE;
+                end
+            end
+            
+            default: begin
+                state_next = IDLE;
             end
         endcase
     end

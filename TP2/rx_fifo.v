@@ -1,8 +1,8 @@
 `timescale 1ns / 1ps
 
 module rx_fifo #(
-    parameter B = 8,  // Bits en una palabra
-    parameter W = 4   // Bits de direccion
+    parameter B = 16,  // Bits en una palabra
+    parameter W = 8   // Bits de direccion
 )(
     input  wire         clk, reset,
     input  wire         rd, wr,

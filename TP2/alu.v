@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 module alu #(
     parameter NB_DATA = 8
 )

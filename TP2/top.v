@@ -12,7 +12,11 @@ module top #(
     output wire tx_serial
 );
 
+    // ================================
     // Señales internas
+    // ================================
+    
+    // Baud rate generator
     wire s_tick;
     
     // Señales UART RX
@@ -30,7 +34,19 @@ module top #(
     wire [NB_DATA-1:0]  tx_data_in;
     wire                tx_done_tick;
     
-    // Instancia del generador de baud rate
+    // Señales ALU
+    wire [NB_DATA-3:0]  alu_op;
+    wire [NB_DATA-1:0]  alu_a;
+    wire [NB_DATA-1:0]  alu_b;
+    wire [NB_DATA-1:0]  alu_result;
+    wire                alu_carry;
+    wire                alu_zero;
+    
+    // ================================
+    // Instancias de módulos
+    // ================================
+    
+    // Generador de baud rate
     baud_rate_gen #(
         .CLK_FREQ(CLK_FREQ),
         .BAUD(BAUD_RATE)
@@ -40,7 +56,7 @@ module top #(
         .tick(s_tick)
     );
     
-    // Instancia del receptor UART
+    // Receptor UART
     uart_rx #(
         .NB_DATA(NB_DATA),
         .S_TICK(16)
@@ -53,7 +69,7 @@ module top #(
         .data_out(rx_data_out)
     );
     
-    // Instancia del FIFO para recepción
+    // FIFO de recepción
     rx_fifo #(
         .B(NB_DATA),
         .W(FIFO_W)
@@ -68,21 +84,40 @@ module top #(
         .r_data(fifo_r_data)
     );
     
-    // Instancia de la interface (controlador)
+    // Controlador de interface (FSM)
     interface #(
         .NB_DATA(NB_DATA)
     ) interface_inst (
         .clk(clk),
         .reset(reset),
+        // Conexión FIFO RX
         .rx_empty(fifo_empty),
         .rx_data(fifo_r_data),
         .rx_rd(fifo_rd),
+        // Conexión UART TX
         .tx_done_tick(tx_done_tick),
         .tx_start(tx_start),
-        .tx_data(tx_data_in)
+        .tx_data(tx_data_in),
+        // Conexión ALU
+        .alu_op(alu_op),
+        .alu_a(alu_a),
+        .alu_b(alu_b),
+        .alu_result(alu_result)
     );
     
-    // Instancia del transmisor UART
+    // ALU (Unidad Aritmético-Lógica)
+    alu #(
+        .NB_DATA(NB_DATA)
+    ) alu_inst (
+        .data_1(alu_a),
+        .data_2(alu_b),
+        .data_3(alu_op),
+        .o_data(alu_result),
+        .o_carry(alu_carry),
+        .o_zero(alu_zero)
+    );
+    
+    // Transmisor UART
     uart_tx #(
         .NB_DATA(NB_DATA),
         .S_TICK(16)

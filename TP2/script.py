@@ -130,7 +130,7 @@ class ALUController:
                 # Reconstruir el valor original antes de la conversión
                 original_shift = result.bit_length() - 1 if result else 0
                 print(f"← Resultado: {result} (decimal) = 0b{result:08b} (binario)")
-                print(f"   (Valor {operand_a} desplazado {shift_amount} posiciones a la derecha)")
+                print(f"   (Valor {operand_a} desplazado {operand_b} posiciones a la derecha)")
             
             print("-" * 60)
     

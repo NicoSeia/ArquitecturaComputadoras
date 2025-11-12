@@ -14,21 +14,29 @@ module interface #(
     // Conexión con UART TX (hacia TX)
     input  wire                  tx_done_tick,
     output reg                   tx_start,
-    output reg  [NB_DATA-1:0]    tx_data
+    output reg  [NB_DATA-1:0]    tx_data,
+
+    // Conexión con ALU
+    output reg  [NB_DATA-3:0]    alu_op,
+    output reg  [NB_DATA-1:0]    alu_a,
+    output reg  [NB_DATA-1:0]    alu_b,
+    input  wire [NB_DATA-1:0]    alu_result
 );
 
-    // Estados de la máquina
-    localparam [2:0]
-        IDLE      = 3'b000,
-        READ_OP   = 3'b001,
-        READ_A    = 3'b010,
-        READ_B    = 3'b011,
-        COMPUTE   = 3'b100,
-        SEND      = 3'b101,
-        WAIT_TX   = 3'b110;
+    // ========================================
+    // Estados en ONE-HOT encoding
+    // ========================================
+    localparam [6:0]
+        IDLE      = 7'b0000001,  // bit 0
+        READ_OP   = 7'b0000010,  // bit 1
+        READ_A    = 7'b0000100,  // bit 2
+        READ_B    = 7'b0001000,  // bit 3
+        COMPUTE   = 7'b0010000,  // bit 4
+        SEND      = 7'b0100000,  // bit 5
+        WAIT_TX   = 7'b1000000;  // bit 6
     
-    // Registros de estado
-    reg [2:0] state_reg, state_next;
+    // Registros de estado (7 bits para one-hot)
+    reg [6:0] state_reg, state_next;
     
     // Registros para almacenar los operandos y operación
     reg [NB_DATA-3:0] op_reg, op_next;
@@ -36,31 +44,25 @@ module interface #(
     reg [NB_DATA-1:0] operand_b_reg, operand_b_next;
     reg [NB_DATA-1:0] result_reg, result_next;
     
-    // Señales de la ALU
-    wire [NB_DATA-1:0] alu_result;
-    wire               alu_carry;
-    wire               alu_zero;
+    // ========================================
+    // Asignación continua de salidas a ALU
+    // ========================================
+    always @(*) begin
+        alu_op = op_reg;
+        alu_a  = operand_a_reg;
+        alu_b  = operand_b_reg;
+    end
     
-    // Instancia de la ALU
-    alu #(
-        .NB_DATA(NB_DATA)
-    ) alu_inst (
-        .data_1(operand_a_reg),
-        .data_2(operand_b_reg),
-        .data_3(op_reg),
-        .o_data(alu_result),
-        .o_carry(alu_carry),
-        .o_zero(alu_zero)
-    );
-    
-    // Registro de estado
+    // ========================================
+    // Registro de estado (secuencial)
+    // ========================================
     always @(posedge clk) begin
         if (reset) begin
             state_reg     <= IDLE;
-            op_reg        <= 0;
-            operand_a_reg <= 0;
-            operand_b_reg <= 0;
-            result_reg    <= 0;
+            op_reg        <= {(NB_DATA-2){1'b0}};
+            operand_a_reg <= {NB_DATA{1'b0}};
+            operand_b_reg <= {NB_DATA{1'b0}};
+            result_reg    <= {NB_DATA{1'b0}};
         end else begin
             state_reg     <= state_next;
             op_reg        <= op_next;
@@ -70,7 +72,10 @@ module interface #(
         end
     end
     
-    // Lógica combinacional
+    // ========================================
+    // Lógica combinacional (next state + outputs)
+    // Con one-hot, usamos case(1'b1)
+    // ========================================
     always @(*) begin
         // Valores por defecto
         state_next     = state_reg;
@@ -82,14 +87,23 @@ module interface #(
         tx_start       = 1'b0;
         tx_data        = result_reg;
         
-        case (state_reg)
-            IDLE: begin
+        // ========================================
+        // FSM con one-hot: case(1'b1) busca el bit activo
+        // ========================================
+        case (1'b1)
+            // =====================================
+            // IDLE: Esperar datos en FIFO
+            // =====================================
+            state_reg[0]: begin  // IDLE
                 if (!rx_empty) begin
                     state_next = READ_OP;
                 end
             end
             
-            READ_OP: begin
+            // =====================================
+            // READ_OP: Leer código de operación
+            // =====================================
+            state_reg[1]: begin  // READ_OP
                 if (!rx_empty) begin
                     op_next    = rx_data[NB_DATA-3:0];
                     rx_rd      = 1'b1;
@@ -97,7 +111,10 @@ module interface #(
                 end
             end
             
-            READ_A: begin
+            // =====================================
+            // READ_A: Leer operando A
+            // =====================================
+            state_reg[2]: begin  // READ_A
                 if (!rx_empty) begin
                     operand_a_next = rx_data;
                     rx_rd          = 1'b1;
@@ -105,7 +122,10 @@ module interface #(
                 end
             end
             
-            READ_B: begin
+            // =====================================
+            // READ_B: Leer operando B
+            // =====================================
+            state_reg[3]: begin  // READ_B
                 if (!rx_empty) begin
                     operand_b_next = rx_data;
                     rx_rd          = 1'b1;
@@ -113,23 +133,35 @@ module interface #(
                 end
             end
             
-            COMPUTE: begin
+            // =====================================
+            // COMPUTE: Calcular resultado (ALU combinacional)
+            // =====================================
+            state_reg[4]: begin  // COMPUTE
                 result_next = alu_result;
                 state_next  = SEND;
             end
             
-            SEND: begin
+            // =====================================
+            // SEND: Iniciar transmisión
+            // =====================================
+            state_reg[5]: begin  // SEND
                 tx_data    = result_reg;
                 tx_start   = 1'b1;
                 state_next = WAIT_TX;
             end
             
-            WAIT_TX: begin
+            // =====================================
+            // WAIT_TX: Esperar fin de transmisión
+            // =====================================
+            state_reg[6]: begin  // WAIT_TX
                 if (tx_done_tick) begin
                     state_next = IDLE;
                 end
             end
             
+            // =====================================
+            // DEFAULT: Estado inválido, volver a IDLE
+            // =====================================
             default: begin
                 state_next = IDLE;
             end
